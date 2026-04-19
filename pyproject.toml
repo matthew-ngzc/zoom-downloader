@@ -1,0 +1,10 @@
+[project]
+name = "zoom-recorder"
+version = "0.1.0"
+description = "Simple Zoom recording downloader using yt-dlp."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "yt-dlp>=2025.1.0",
+]
+
