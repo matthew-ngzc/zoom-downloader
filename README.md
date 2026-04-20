@@ -173,10 +173,25 @@ CI also includes:
 
 Releases are triggered by pushing a git tag that starts with `v` (for example `v1.0.0`).
 
+- Push to `main` (without tag): runs checks/tests/build, no GitHub Release publish.
+- Push `v*` tag: runs release e2e + publish steps.
+
 ```powershell
 git checkout main
 git pull origin main
 git tag v1.0.0
+git push origin v1.0.0
+```
+
+If code is already committed locally, you can push code + tag in one shot:
+
+```powershell
+git push origin main v1.0.0
+```
+
+If code is already on remote `main` and you only want to release that commit, push only the tag:
+
+```powershell
 git push origin v1.0.0
 ```
 
