@@ -13,13 +13,17 @@ permissions:
 
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runs_on }}
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - windows-latest
-          - macos-latest
+        include:
+          - target: windows-x64
+            runs_on: windows-latest
+          - target: macos-arm64
+            runs_on: macos-14
+          - target: macos-x64
+            runs_on: macos-13
 
     steps:
       - name: Checkout
@@ -41,13 +45,23 @@ jobs:
 
   build:
     needs: test
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runs_on }}
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - windows-latest
-          - macos-latest
+        include:
+          - target: windows-x64
+            runs_on: windows-latest
+            artifact_name: zoom-downloader-windows-x64
+            zip_name: zoom-downloader-windows-x64.zip
+          - target: macos-arm64
+            runs_on: macos-14
+            artifact_name: zoom-downloader-macos-arm64
+            zip_name: zoom-downloader-macos-arm64.zip
+          - target: macos-x64
+            runs_on: macos-13
+            artifact_name: zoom-downloader-macos-x64
+            zip_name: zoom-downloader-macos-x64.zip
 
     steps:
       - name: Checkout
@@ -68,7 +82,7 @@ jobs:
         run: uv run pyinstaller --noconfirm --clean zoom-downloader.spec
 
       - name: Package Windows release zip
-        if: runner.os == 'Windows'
+        if: matrix.target == 'windows-x64'
         shell: pwsh
         run: |
           $pkg = "release_package"
@@ -78,10 +92,10 @@ jobs:
           Copy-Item "Run Zoom Downloader.bat" "$pkg/Run Zoom Downloader.bat"
           Copy-Item "README.md" "$pkg/README.md"
           Copy-Item "LICENSE" "$pkg/LICENSE"
-          Compress-Archive -Path "$pkg/*" -DestinationPath "zoom-downloader-windows.zip" -Force
+          Compress-Archive -Path "$pkg/*" -DestinationPath "${{ matrix.zip_name }}" -Force
 
       - name: Package macOS release zip
-        if: runner.os == 'macOS'
+        if: matrix.target == 'macos-arm64' || matrix.target == 'macos-x64'
         shell: bash
         run: |
           set -euo pipefail
@@ -94,22 +108,13 @@ jobs:
           chmod +x "$pkg/Run Zoom Downloader.command"
           cp README.md "$pkg/README.md"
           cp LICENSE "$pkg/LICENSE"
-          (cd "$pkg" && zip -r ../zoom-downloader-macos.zip .)
+          (cd "$pkg" && zip -r "../${{ matrix.zip_name }}" .)
 
-      - name: Upload Windows artifact
-        if: runner.os == 'Windows'
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: zoom-downloader-windows
-          path: zoom-downloader-windows.zip
-          if-no-files-found: error
-
-      - name: Upload macOS artifact
-        if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
-        with:
-          name: zoom-downloader-macos
-          path: zoom-downloader-macos.zip
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.zip_name }}
           if-no-files-found: error
 
   release:

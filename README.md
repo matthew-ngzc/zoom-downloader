@@ -7,53 +7,52 @@ This script downloads Zoom cloud recordings using `yt-dlp`.
 For password-protected Zoom recordings, this project uses `cookies.txt` instead of passcode input.  
 Passcode-only extraction is not reliable here; use [Cookies Setup](#cookies-setup).
 
-## Requirements
+## Usage
+
+There are 2 ways to run this app:
+
+1. Download prebuilt release zip (no Python setup needed)
+2. Clone and run from source code
+
+### Run from Release Zip
+
+#### Requirements
+
+- Windows or macOS
+- Internet access (to reach Zoom recording URLs)
+
+#### Steps
+
+- Download the correct release asset for your OS/architecture:
+  - `zoom-downloader-windows-x64.zip`
+  - `zoom-downloader-macos-arm64.zip` (Apple Silicon)
+  - `zoom-downloader-macos-x64.zip` (Intel)
+- Extract the zip.
+- Run the launcher:
+  - Windows: `Run Zoom Downloader.bat`
+  - macOS: `Run Zoom Downloader.command`
+
+#### macOS note
+
+- These binaries are not notarized. macOS may show a security warning on first run.
+- If blocked, allow it in System Settings -> Privacy & Security, then run again.
+
+### Run from Code (Clone)
+
+#### Requirements
 
 - Windows/macOS/Linux with terminal access
 - Python 3.10 or newer
 - `uv` installed
 - Internet access (to reach Zoom recording URLs)
 
-## Windows Release Usage
-
-When using the packaged Windows release zip:
-
-- Extract the zip to a folder.
-- Run `Run Zoom Downloader.bat` to open the app in a maximized terminal window.
-- Running `zoom-downloader.exe` directly is still supported, but the launcher is the recommended entry point.
-
-## macOS Release Usage
-
-When using the packaged macOS release zip:
-
-- Extract the zip to a folder.
-- Run `Run Zoom Downloader.command`.
-- If macOS blocks it on first run, allow it in System Settings (Privacy & Security) and run again.
-- Running `zoom-downloader` directly is still supported, but the launcher is the recommended entry point.
-
-## Running (uv setup)
-
-### 1. Enter directory
+#### Steps
 
 ```powershell
-cd "your folder directory"
-```
-
-### 2. Create virtual environment (one-time setup)
-
-```powershell
+git clone https://github.com/matthew-ngzc/zoom-downloader.git
+cd zoom-downloader
 uv venv
-```
-
-### 3. Install dependencies (one-time setup)
-
-```powershell
 uv sync
-```
-
-### 4. Run script
-
-```powershell
 uv run python zoom_recording_downloader.py
 ```
 
@@ -99,5 +98,6 @@ Build output is generated in:
 
 For release packaging, this repo's GitHub Actions workflow creates OS-specific zip bundles:
 
-- Windows zip includes `zoom-downloader.exe` + `Run Zoom Downloader.bat`.
-- macOS zip includes `zoom-downloader` + `Run Zoom Downloader.command`.
+- `zoom-downloader-windows-x64.zip` includes `zoom-downloader.exe` + `Run Zoom Downloader.bat`.
+- `zoom-downloader-macos-arm64.zip` includes `zoom-downloader` + `Run Zoom Downloader.command`.
+- `zoom-downloader-macos-x64.zip` includes `zoom-downloader` + `Run Zoom Downloader.command`.
