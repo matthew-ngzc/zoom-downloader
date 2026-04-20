@@ -699,8 +699,6 @@ def collect_user_inputs() -> tuple[
     default_output_dir = "downloads"
     default_filename_template = "%(title)s.%(ext)s"
     print(ui_default("Enter values when prompted. If a field is not applicable, just press Enter."))
-    script_dir = Path(__file__).resolve().parent
-    cookies_dir = script_dir / "cookies"
     print(ui_default('Tip: at any text field, type "exit" to close the app, or "back" to return to the previous field.'))
 
     url: str | None = None

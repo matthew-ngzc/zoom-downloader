@@ -15,6 +15,13 @@ Run everything in one command (static analysis + dependency audit + all tests in
 uv run python scripts/run_all_checks.py
 ```
 
+Run static analysis only:
+
+```powershell
+uv run ruff check .
+uv run pip-audit
+```
+
 Run only non-e2e tests:
 
 ```powershell
