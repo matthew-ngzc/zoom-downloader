@@ -90,6 +90,7 @@ uv run pytest -q -k "public_download_e2e"
 ### `integration/test_download_fallback.py`
 
 - `download_zoom_recording(...)` protected-recording retry logic
+  - passcode-first cookie refresh attempt (when passcode is provided)
   - first attempt without cookies fails
   - retry uses default `cookies/cookies.txt` when available
 - verifies non-protected errors do not trigger cookie retry

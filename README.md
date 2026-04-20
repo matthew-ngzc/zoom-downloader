@@ -4,8 +4,15 @@ This script downloads Zoom cloud recordings using `yt-dlp`.
 
 ## Password-Protected Videos
 
-For password-protected Zoom recordings, this project uses `cookies.txt` instead of passcode input.  
-Passcode-only extraction is not reliable here; use [Cookies Setup](#cookies-setup).
+For password-protected Zoom recordings, the app now tries passcode-first automation:
+
+1. You enter passcode in the interactive flow.
+2. The app attempts automated auth and cookie refresh.
+3. If that fails, it falls back to manual `cookies.txt` setup.
+
+Use [Cookies Setup](#cookies-setup) only when passcode-first automation fails.
+
+> This is safe as everything is happening on your machine, your passwords and cookies are not being sent anywhere (other than the Zoom server of course).
 
 ## Usage
 
@@ -14,55 +21,52 @@ There are 2 ways to run this app:
 1. Download prebuilt release zip (no Python setup needed)
 2. Clone and run from source code
 
-### 1. Run from Release Zip
+### 1. Run from Release Zip (Recommended for non-technical users)
 
 #### Requirements
 
 - Windows or macOS
 - Internet access (to reach Zoom recording URLs)
 
-#### Steps
+#### Steps:
+1. Go to the `Releases` Section in this Github Repository
+     ![Where to find Releases](images/releases.png)
+2. Download the correct release asset for your OS/architecture:
+   - `zoom-downloader-windows-x64.zip` (Windows)
+   - `zoom-downloader-macos-arm64.zip` (Apple Silicon)
+   - `zoom-downloader-macos-x64.zip` (Intel)
 
-- Download the correct release asset for your OS/architecture:
-  - `zoom-downloader-windows-x64.zip`
-  - `zoom-downloader-macos-arm64.zip` (Apple Silicon)
-  - `zoom-downloader-macos-x64.zip` (Intel)
-- Extract the zip.
-- Run the launcher:
-  - Windows: `Run Zoom Downloader.bat`
-  - macOS: `Run Zoom Downloader.command`
+    ![Finding the correct file](images/files.png)
+3. Verify the SHA-256 Hash 
+   
+   Each release also includes matching checksum files, download the one matching the `.zip` you downloaded earlier:
+   - `zoom-downloader-windows-x64.zip.sha256`
+   - `zoom-downloader-macos-arm64.zip.sha256`
+   - `zoom-downloader-macos-x64.zip.sha256`
 
-#### Verify download integrity (SHA-256)
+    Run the following commands in the terminal, at the directory that you downloaded the `.zip` and the `.sha256` files to. 
+    - Windows (PowerShell):
+      ```powershell
+      $expected = (Get-Content .\zoom-downloader-windows-x64.zip.sha256).Split(" ")[0].ToLower()
+      $actual = (Get-FileHash .\zoom-downloader-windows-x64.zip -Algorithm SHA256).Hash.ToLower()
+      $expected -eq $actual
+      ```
 
-Each release also includes matching checksum files:
+    - macOS:
+      ```bash
+      shasum -a 256 -c zoom-downloader-macos-arm64.zip.sha256
+      ```
 
-- `zoom-downloader-windows-x64.zip.sha256`
-- `zoom-downloader-macos-arm64.zip.sha256`
-- `zoom-downloader-macos-x64.zip.sha256`
+    The check should report success (`True` on PowerShell, `OK` on macOS).
 
-Verify before extracting/running:
+    > [!CAUTION]
+    > Downloading and running executables carries inherent security risks. Only proceed if you explicitly trust the developer. Even then, always verify the file's hash before execution using the checksum mentioned earlier.
+4. Extract the zip.
+5. Run the launcher (future runs just need this step):
+   - Windows: `Run Zoom Downloader.bat`
+   - macOS: `Run Zoom Downloader.command`
+  
 
-- Windows (PowerShell):
-
-```powershell
-$expected = (Get-Content .\zoom-downloader-windows-x64.zip.sha256).Split(" ")[0].ToLower()
-$actual = (Get-FileHash .\zoom-downloader-windows-x64.zip -Algorithm SHA256).Hash.ToLower()
-$expected -eq $actual
-```
-
-- macOS:
-
-```bash
-shasum -a 256 -c zoom-downloader-macos-arm64.zip.sha256
-```
-
-The check should report success (`True` on PowerShell, `OK` on macOS).
-
-> [!CAUTION]
-> Downloading and running executables carries inherent security risks. Only proceed if you explicitly trust the developer. Even then, always verify the file's hash before execution using the checksum mentioned earlier.
-
-
->
 > **Security note**:
 >- Release binaries are unsigned (macOS: not notarized, Windows: not code-signed), so first-run security warnings are expected.
 >
@@ -95,7 +99,7 @@ uv run python zoom_recording_downloader.py
 
 ## Cookies Setup
 
-For password-protected recordings, get `cookies.txt` and provide its path in the script prompt.
+If passcode-first automation fails for a protected recording, get `cookies.txt` and provide its path when prompted.
 
 - Install **Get cookies.txt LOCALLY**:  
   https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc

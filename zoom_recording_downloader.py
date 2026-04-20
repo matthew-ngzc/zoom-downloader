@@ -575,8 +575,8 @@ def print_output_folder_help(cwd: Path, default_output_dir: str) -> None:
 
 def print_cookies_help(cookies_dir: Path) -> None:
     print()
-    print(ui_warning("Password-protected Zoom recordings: use cookies.txt only."))
-    print(ui_warning("Passcode-only extraction is not supported in this script."))
+    print(ui_warning("Passcode-based download could not be completed."))
+    print(ui_warning("Please provide cookies.txt to continue for protected recordings."))
     print(ui_section("Cookies file path examples:"))
     print(
         ui_example(
@@ -693,7 +693,7 @@ def collect_user_inputs() -> tuple[
     str,
     Path,
     str,
-    Path | None,
+    str | None,
 ]:
     cwd = Path.cwd()
     default_output_dir = "downloads"
@@ -706,7 +706,7 @@ def collect_user_inputs() -> tuple[
     url: str | None = None
     output_dir_value: str | None = default_output_dir
     filename_input: str | None = default_filename_template
-    cookie_file_value: str | None = None
+    passcode_value: str | None = None
 
     step = 0
     while step < 4:
@@ -728,9 +728,9 @@ def collect_user_inputs() -> tuple[
                     allow_back=True,
                 )
             else:
-                print_cookies_help(cookies_dir)
-                cookie_file_value = prompt_optional(
-                    "Cookies file path [e.g. cookies.txt]: ",
+                print()
+                passcode_value = prompt_optional(
+                    "Recording password/passcode (optional; press Enter if not needed): ",
                     default=None,
                     allow_back=True,
                 )
@@ -746,8 +746,36 @@ def collect_user_inputs() -> tuple[
         url or "",
         Path(output_dir_value or default_output_dir),
         normalize_filename_template(filename_input, default_filename_template),
-        resolve_cookie_file_path(cookie_file_value),
+        passcode_value,
     )
+
+
+def prompt_cookie_file_path_for_protected_retry() -> Path | None:
+    cookies_dir = Path(__file__).resolve().parent / "cookies"
+    print_cookies_help(cookies_dir)
+    cookie_file_value = prompt_optional(
+        "Cookies file path [e.g. cookies.txt]: ",
+        default=None,
+        allow_back=False,
+    )
+    return resolve_cookie_file_path(cookie_file_value)
+
+
+def _try_refresh_cookies_from_passcode(url: str, passcode: str, output_dir: Path) -> Path | None:
+    try:
+        from scripts.refresh_zoom_cookies import refresh_zoom_cookies
+    except Exception:
+        print(ui_warning("Passcode automation is unavailable in this build/environment."))
+        return None
+
+    temp_cookie_path = output_dir / ".auto_refreshed_cookies.txt"
+    try:
+        print(ui_section("Attempting passcode-based auth..."))
+        refresh_zoom_cookies(url, passcode, temp_cookie_path)
+        return temp_cookie_path
+    except Exception as exc:
+        print(ui_warning(f"Passcode auth failed: {exc}"))
+        return None
 
 
 def download_zoom_recording(
@@ -755,8 +783,11 @@ def download_zoom_recording(
     output_dir: Path,
     filename_template: str,
     cookie_file_path: Path | None,
+    passcode: str | None = None,
+    interactive_cookie_fallback: bool = False,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
+
     def run_download(active_cookie_file_path: Path | None) -> None:
         progress_renderer = DownloadProgressRenderer()
         resolved_outtmpl = resolve_outtmpl_with_collision_handling(
@@ -778,6 +809,21 @@ def download_zoom_recording(
         with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
             ydl.download([url])
 
+    if passcode:
+        refreshed_cookie_path = _try_refresh_cookies_from_passcode(url, passcode, output_dir)
+        if refreshed_cookie_path:
+            try:
+                run_download(refreshed_cookie_path)
+                return
+            except DownloadError as exc:
+                if not looks_like_protected_recording_error(exc):
+                    raise
+            finally:
+                try:
+                    refreshed_cookie_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
     if cookie_file_path is not None:
         run_download(cookie_file_path)
         return
@@ -792,6 +838,13 @@ def download_zoom_recording(
             print(ui_default(f'Using: "{default_cookie_file_path}"'))
             run_download(default_cookie_file_path)
             return
+        if looks_like_protected_recording_error(exc) and interactive_cookie_fallback:
+            print()
+            print(ui_warning("Protected recording still requires cookies.txt."))
+            cookie_retry_path = prompt_cookie_file_path_for_protected_retry()
+            if cookie_retry_path:
+                run_download(cookie_retry_path)
+                return
         raise
 
 
@@ -800,7 +853,7 @@ def main() -> None:
     try:
         while True:
             print_zoom_downloader_header()
-            url, output_dir, filename_template, cookie_file_path = collect_user_inputs()
+            url, output_dir, filename_template, passcode = collect_user_inputs()
             print_download_start_separator()
             download_succeeded = False
             stack_trace_text: str | None = None
@@ -809,7 +862,9 @@ def main() -> None:
                     url,
                     output_dir,
                     filename_template,
-                    cookie_file_path,
+                    None,
+                    passcode=passcode,
+                    interactive_cookie_fallback=True,
                 )
                 download_succeeded = True
             except ExitRequested:

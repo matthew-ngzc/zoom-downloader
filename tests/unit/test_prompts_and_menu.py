@@ -36,9 +36,8 @@ def test_collect_user_inputs_with_back(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(zrd, "__file__", str(fake_script))
     monkeypatch.setattr(zrd, "clear_input_buffer", lambda: None)
     monkeypatch.setattr(zrd, "print_output_folder_help", lambda *_args: None)
-    monkeypatch.setattr(zrd, "print_cookies_help", lambda *_args: None)
 
-    # URL -> Output -> back at Filename -> Output (again) -> Filename -> Cookies
+    # URL -> Output -> back at Filename -> Output (again) -> Filename -> Passcode
     inputs = iter(
         [
             "https://zoom.us/rec/play/abc",
@@ -46,17 +45,17 @@ def test_collect_user_inputs_with_back(monkeypatch, tmp_path: Path) -> None:
             "back",
             "downloads_b",
             "custom_name",
-            "cookies.txt",
+            "XO@!.41P",
         ]
     )
     monkeypatch.setattr("builtins.input", lambda _prompt: next(inputs))
 
-    url, output_dir, filename_template, cookie_file = zrd.collect_user_inputs()
+    url, output_dir, filename_template, passcode = zrd.collect_user_inputs()
 
     assert url == "https://zoom.us/rec/play/abc"
     assert output_dir.name == "downloads_b"
     assert filename_template == "custom_name.%(ext)s"
-    assert cookie_file == tmp_path / "cookies" / "cookies.txt"
+    assert passcode == "XO@!.41P"
 
 
 def test_prompt_next_action_fallback_numeric(monkeypatch) -> None:
@@ -91,4 +90,3 @@ def test_prompt_next_action_arrow_mode_trace(monkeypatch) -> None:
 
     action = zrd.prompt_next_action(download_succeeded=False, allow_stack_trace=True)
     assert action == "trace"
-
