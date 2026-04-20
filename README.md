@@ -14,7 +14,7 @@ There are 2 ways to run this app:
 1. Download prebuilt release zip (no Python setup needed)
 2. Clone and run from source code
 
-### Run from Release Zip
+### 1. Run from Release Zip
 
 #### Requirements
 
@@ -32,12 +32,49 @@ There are 2 ways to run this app:
   - Windows: `Run Zoom Downloader.bat`
   - macOS: `Run Zoom Downloader.command`
 
-#### macOS note
+#### Verify download integrity (SHA-256)
 
-- These binaries are not notarized. macOS may show a security warning on first run.
-- If blocked, allow it in System Settings -> Privacy & Security, then run again.
+Each release also includes matching checksum files:
 
-### Run from Code (Clone)
+- `zoom-downloader-windows-x64.zip.sha256`
+- `zoom-downloader-macos-arm64.zip.sha256`
+- `zoom-downloader-macos-x64.zip.sha256`
+
+Verify before extracting/running:
+
+- Windows (PowerShell):
+
+```powershell
+$expected = (Get-Content .\zoom-downloader-windows-x64.zip.sha256).Split(" ")[0].ToLower()
+$actual = (Get-FileHash .\zoom-downloader-windows-x64.zip -Algorithm SHA256).Hash.ToLower()
+$expected -eq $actual
+```
+
+- macOS:
+
+```bash
+shasum -a 256 -c zoom-downloader-macos-arm64.zip.sha256
+```
+
+The check should report success (`True` on PowerShell, `OK` on macOS).
+
+> [!CAUTION]
+> Downloading and running executables carries inherent security risks. Only proceed if you explicitly trust the developer. Even then, always verify the file's hash before execution using the checksum mentioned earlier.
+
+
+>
+> **Security note**:
+>- Release binaries are unsigned (macOS: not notarized, Windows: not code-signed), so first-run security warnings are expected.
+>
+> **If blocked on macOS**:
+>- Open **System Settings -> Privacy & Security**.
+>- Under Security, allow the blocked app, then run `Run Zoom Downloader.command` again.
+>
+> **If blocked on Windows**:
+>- In SmartScreen, click **More info**.
+>- Click **Run anyway**.
+
+### 2. Run from Code (Clone)
 
 #### Requirements
 
@@ -101,3 +138,4 @@ For release packaging, this repo's GitHub Actions workflow creates OS-specific z
 - `zoom-downloader-windows-x64.zip` includes `zoom-downloader.exe` + `Run Zoom Downloader.bat`.
 - `zoom-downloader-macos-arm64.zip` includes `zoom-downloader` + `Run Zoom Downloader.command`.
 - `zoom-downloader-macos-x64.zip` includes `zoom-downloader` + `Run Zoom Downloader.command`.
+- Each zip has a corresponding `.sha256` file for integrity verification.

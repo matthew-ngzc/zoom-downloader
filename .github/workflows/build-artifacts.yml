@@ -93,6 +93,8 @@ jobs:
           Copy-Item "README.md" "$pkg/README.md"
           Copy-Item "LICENSE" "$pkg/LICENSE"
           Compress-Archive -Path "$pkg/*" -DestinationPath "${{ matrix.zip_name }}" -Force
+          $hash = (Get-FileHash "${{ matrix.zip_name }}" -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${{ matrix.zip_name }}" | Out-File -FilePath "${{ matrix.zip_name }}.sha256" -Encoding ascii -NoNewline
 
       - name: Package macOS release zip
         if: matrix.target == 'macos-arm64' || matrix.target == 'macos-x64'
@@ -109,12 +111,15 @@ jobs:
           cp README.md "$pkg/README.md"
           cp LICENSE "$pkg/LICENSE"
           (cd "$pkg" && zip -r "../${{ matrix.zip_name }}" .)
+          shasum -a 256 "${{ matrix.zip_name }}" > "${{ matrix.zip_name }}.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.zip_name }}
+          path: |
+            ${{ matrix.zip_name }}
+            ${{ matrix.zip_name }}.sha256
           if-no-files-found: error
 
   release:
