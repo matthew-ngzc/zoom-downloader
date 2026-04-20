@@ -54,3 +54,28 @@ For password-protected recordings, get `cookies.txt` and provide its path in the
 - Relative path, e.g. `archive/cookies2.txt` (resolved to `<project>/zoom_recorder/cookies/archive/cookies2.txt`)
 - Absolute path, e.g. `C:\Users\yourname\Downloads\cookies.txt`
 - If you leave cookie path blank and the recording appears protected, the script auto-retries with `zoom_recorder/cookies/cookies.txt` when that file exists.
+
+## Developer Notes
+
+### 1. Install dev dependencies
+
+```powershell
+uv sync --dev
+```
+
+### 2. Run locally (dev)
+
+```powershell
+uv run python zoom_recording_downloader.py
+```
+
+### 3. Build executable (PyInstaller + spec)
+
+```powershell
+uv run pyinstaller zoom-downloader.spec
+```
+
+Build output is generated in:
+
+- `dist/zoom-downloader.exe` (Windows)
+- `build/` (PyInstaller build artifacts)

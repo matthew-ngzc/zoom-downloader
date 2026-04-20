@@ -16,3 +16,7 @@ cookies/
 .DS_Store
 Thumbs.db
 *.log
+
+# Exe building
+dist/
+build/
