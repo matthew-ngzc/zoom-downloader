@@ -7,6 +7,8 @@ import os
 import sys
 import time
 import ctypes
+import subprocess
+import traceback
 from pathlib import Path
 from typing import Any, cast
 
@@ -16,6 +18,34 @@ from yt_dlp.utils import DownloadError
 ANSI_RESET = "\033[0m"
 ANSI_BOLD = "\033[1m"
 ANSI_ENABLED = False
+
+
+class ExitRequested(Exception):
+    """Raised when user types 'exit' in an input field."""
+
+
+class BackRequested(Exception):
+    """Raised when user types 'back' in pre-download inputs."""
+
+
+def clear_input_buffer() -> None:
+    """Best-effort input buffer drain to avoid queued keypresses being reused."""
+    try:
+        if os.name == "nt":
+            import msvcrt  # type: ignore
+
+            while msvcrt.kbhit():
+                msvcrt.getwch()
+            return
+
+        # POSIX fallback
+        import termios  # type: ignore
+
+        if sys.stdin.isatty():
+            termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+    except Exception:
+        # Ignore environments where buffer flush is unavailable.
+        pass
 
 
 def configure_console_output() -> None:
@@ -43,6 +73,41 @@ def configure_console_output() -> None:
             pass
     if not ANSI_ENABLED:
         ANSI_ENABLED = sys.stdout.isatty() or bool(os.getenv("FORCE_COLOR"))
+
+
+def maximize_console_window() -> None:
+    """Best-effort console maximize for Windows and macOS Terminal."""
+    if os.name == "nt":
+        try:
+            kernel32 = ctypes.windll.kernel32
+            user32 = ctypes.windll.user32
+            hwnd = kernel32.GetConsoleWindow()
+            if hwnd:
+                SW_MAXIMIZE = 3
+                user32.ShowWindow(hwnd, SW_MAXIMIZE)
+        except Exception:
+            pass
+        return
+
+    if sys.platform == "darwin":
+        # Works when launched in Apple Terminal. Other terminals may ignore this.
+        script = """
+        tell application "Terminal"
+            activate
+            if (count of windows) > 0 then
+                set zoomed of front window to true
+            end if
+        end tell
+        """
+        try:
+            subprocess.run(
+                ["osascript", "-e", script],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
 
 
 def supports_ansi() -> bool:
@@ -191,10 +256,14 @@ class YtDlpColorLogger:
         # Progress lines are handled by progress_hooks to guarantee in-place updates.
         if msg.startswith("[download]") and ("% of" in msg or "ETA" in msg):
             return
+        if msg.startswith("[download] Download completed"):
+            return
         self._print_normal(msg)
 
     def info(self, msg: str) -> None:
         if msg.startswith("[download]") and ("% of" in msg or "ETA" in msg):
+            return
+        if msg.startswith("[download] Download completed"):
             return
         self._print_normal(msg)
 
@@ -373,16 +442,31 @@ def print_zoom_downloader_header() -> None:
     print(separator)
 
 
-def prompt_required(prompt_text: str) -> str:
+def prompt_required(prompt_text: str, *, allow_back: bool = False) -> str:
     while True:
+        clear_input_buffer()
         value = input(ui_prompt(prompt_text)).strip()
+        if value.lower() == "exit":
+            raise ExitRequested
+        if allow_back and value.lower() == "back":
+            raise BackRequested
         if value:
             return value
         print(ui_warning("This field is required. Please enter a value."))
 
 
-def prompt_optional(prompt_text: str, default: str | None = None) -> str | None:
+def prompt_optional(
+    prompt_text: str,
+    default: str | None = None,
+    *,
+    allow_back: bool = False,
+) -> str | None:
+    clear_input_buffer()
     value = input(ui_prompt(prompt_text)).strip()
+    if value.lower() == "exit":
+        raise ExitRequested
+    if allow_back and value.lower() == "back":
+        raise BackRequested
     if not value:
         return default
     return value
@@ -559,6 +643,88 @@ def print_download_start_separator() -> None:
     print(separator)
 
 
+def prompt_next_action(*, download_succeeded: bool, allow_stack_trace: bool) -> str:
+    print()
+    if download_succeeded:
+        print(ui_section("Download Complete"))
+    else:
+        print(ui_error("Download Failed"))
+    print()
+    print(ui_section("What would you like to do next?"))
+    print()
+    options: list[tuple[str, str]] = [
+        ("Download another", "again"),
+        ("Close", "close"),
+    ]
+    if allow_stack_trace:
+        options.append(("See stack trace", "trace"))
+    option_labels = [f"{idx + 1}) {label}" for idx, (label, _) in enumerate(options)]
+    selected = 0
+    has_rendered = False
+
+    def render_menu() -> None:
+        nonlocal has_rendered
+        if supports_ansi():
+            # Move cursor up and redraw the menu in-place.
+            if has_rendered:
+                sys.stdout.write(f"\033[{len(option_labels)}F")
+            sys.stdout.flush()
+        for idx, option in enumerate(option_labels):
+            is_selected = idx == selected
+            if is_selected:
+                colored_option = colorize_rgb(
+                    option,
+                    (120, 220, 255),
+                    bold=True,
+                    fallback_code="96",
+                )
+                line = colored_option
+            else:
+                line = colorize_rgb(option, (140, 140, 140), fallback_code="90")
+            print(line)
+        has_rendered = True
+
+    render_menu()
+
+    # Arrow-key input (Windows).
+    try:
+        import msvcrt  # type: ignore
+
+        clear_input_buffer()
+        while True:
+            key = msvcrt.getch()
+            if key in (b"\r", b"\n"):
+                return options[selected][1]
+            if key in (b"\xe0", b"\x00"):
+                key2 = msvcrt.getch()
+                if key2 == b"H":  # Up arrow
+                    selected = (selected - 1) % len(option_labels)
+                    render_menu()
+                elif key2 == b"P":  # Down arrow
+                    selected = (selected + 1) % len(option_labels)
+                    render_menu()
+    except Exception:
+        # Fallback for environments without msvcrt/arrow support.
+        while True:
+            clear_input_buffer()
+            choice = input(ui_prompt(f"Choose [1-{len(option_labels)}]: ")).strip()
+            if choice.lower() == "exit":
+                raise ExitRequested
+            if choice.isdigit():
+                choice_idx = int(choice) - 1
+                if 0 <= choice_idx < len(options):
+                    return options[choice_idx][1]
+            print(ui_warning(f"Invalid choice. Please enter 1 to {len(option_labels)}."))
+
+
+def print_goodbye_and_maybe_delay() -> None:
+    print()
+    print(ui_section("Thanks for using me, Bye Bye!"))
+    # PyInstaller/Nuitka style frozen executable; keep window open briefly.
+    if getattr(sys, "frozen", False):
+        time.sleep(2)
+
+
 def collect_user_inputs() -> tuple[
     str,
     Path,
@@ -569,28 +735,51 @@ def collect_user_inputs() -> tuple[
     default_output_dir = "downloads"
     default_filename_template = "%(title)s.%(ext)s"
     print(ui_default("Enter values when prompted. If a field is not applicable, just press Enter."))
-
-    url = prompt_required("Zoom recording URL: ")
-    print_output_folder_help(cwd, default_output_dir)
-    output_dir_value = prompt_optional(
-        f"Output folder [e.g. {default_output_dir}]: ",
-        default=default_output_dir,
-    )
-    print()
-    filename_input = prompt_optional(
-        "Filename (optional, extension not needed; press Enter for title-based default): ",
-        default=default_filename_template,
-    )
     script_dir = Path(__file__).resolve().parent
     cookies_dir = script_dir / "cookies"
-    print_cookies_help(cookies_dir)
-    cookie_file_value = prompt_optional(
-        "Cookies file path [e.g. cookies.txt]: ",
-        default=None,
-    )
+    print(ui_default('Tip: type "back" to return to the previous field before download starts.'))
+
+    url: str | None = None
+    output_dir_value: str | None = default_output_dir
+    filename_input: str | None = default_filename_template
+    cookie_file_value: str | None = None
+
+    step = 0
+    while step < 4:
+        try:
+            if step == 0:
+                url = prompt_required("Zoom recording URL: ", allow_back=True)
+            elif step == 1:
+                print_output_folder_help(cwd, default_output_dir)
+                output_dir_value = prompt_optional(
+                    f"Output folder [e.g. {default_output_dir}]: ",
+                    default=default_output_dir,
+                    allow_back=True,
+                )
+            elif step == 2:
+                print()
+                filename_input = prompt_optional(
+                    "Filename (optional, extension not needed; press Enter for title-based default): ",
+                    default=default_filename_template,
+                    allow_back=True,
+                )
+            else:
+                print_cookies_help(cookies_dir)
+                cookie_file_value = prompt_optional(
+                    "Cookies file path [e.g. cookies.txt]: ",
+                    default=None,
+                    allow_back=True,
+                )
+            step += 1
+        except BackRequested:
+            if step == 0:
+                print(ui_warning("Already at the first field."))
+                continue
+            step -= 1
+            print(ui_default("Moved back to the previous field."))
 
     return (
-        url,
+        url or "",
         Path(output_dir_value or default_output_dir),
         normalize_filename_template(filename_input, default_filename_template),
         resolve_cookie_file_path(cookie_file_value),
@@ -644,15 +833,53 @@ def download_zoom_recording(
 
 def main() -> None:
     configure_console_output()
-    print_zoom_downloader_header()
-    url, output_dir, filename_template, cookie_file_path = collect_user_inputs()
-    print_download_start_separator()
-    download_zoom_recording(
-        url,
-        output_dir,
-        filename_template,
-        cookie_file_path,
-    )
+    if getattr(sys, "frozen", False):
+        maximize_console_window()
+    try:
+        while True:
+            print_zoom_downloader_header()
+            url, output_dir, filename_template, cookie_file_path = collect_user_inputs()
+            print_download_start_separator()
+            download_succeeded = False
+            stack_trace_text: str | None = None
+            try:
+                download_zoom_recording(
+                    url,
+                    output_dir,
+                    filename_template,
+                    cookie_file_path,
+                )
+                download_succeeded = True
+            except ExitRequested:
+                break
+            except Exception as exc:
+                print()
+                message = str(exc).strip() or exc.__class__.__name__
+                print(ui_error(f"Download failed: {message}"))
+                stack_trace_text = traceback.format_exc()
+
+            action = prompt_next_action(
+                download_succeeded=download_succeeded,
+                allow_stack_trace=stack_trace_text is not None,
+            )
+            while action == "trace":
+                print()
+                print(ui_warning("Stack trace:"))
+                print(ui_default(stack_trace_text or "No stack trace available."))
+                action = prompt_next_action(
+                    download_succeeded=False,
+                    allow_stack_trace=stack_trace_text is not None,
+                )
+
+            if action != "again":
+                break
+    except ExitRequested:
+        pass
+    except KeyboardInterrupt:
+        print()
+        print(ui_warning("Interrupted by user."))
+    finally:
+        print_goodbye_and_maybe_delay()
 
 
 if __name__ == "__main__":
