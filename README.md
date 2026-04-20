@@ -128,6 +128,20 @@ uv run python zoom_recording_downloader.py
 uv run pyinstaller --noconfirm --clean zoom-downloader.spec
 ```
 
+### 4. Optional: run release e2e tests locally
+
+1. Copy `.env.example` to `.env`.
+2. Fill these values in `.env`:
+   - `E2E_ZOOM_PUBLIC_URL`
+   - `E2E_ZOOM_PROTECTED_URL`
+   - `E2E_ZOOM_PROTECTED_PASSCODE` (for passcode-refresh e2e path)
+   - `E2E_ZOOM_COOKIES_TXT_B64` (for cookie-b64 e2e path)
+3. Run:
+
+```powershell
+uv run pytest -m e2e -q
+```
+
 Build output is generated in:
 
 - `dist/zoom-downloader.exe` (Windows)
@@ -139,3 +153,43 @@ For release packaging, this repo's GitHub Actions workflow creates OS-specific z
 - `zoom-downloader-macos-arm64.zip` includes `zoom-downloader` + `Run Zoom Downloader.command`.
 - `zoom-downloader-macos-x64.zip` includes `zoom-downloader` + `Run Zoom Downloader.command`.
 - Each zip has a corresponding `.sha256` file for integrity verification.
+
+Release-tag CI (`v*`) also runs e2e tests using GitHub secrets:
+
+- `E2E_ZOOM_PUBLIC_URL`
+- `E2E_ZOOM_PROTECTED_URL`
+- `E2E_ZOOM_PROTECTED_PASSCODE`
+
+On release tags, CI uses Playwright to open the protected recording URL, submit passcode, and generate a fresh `cookies.txt` dynamically for e2e tests.  
+You do not need to store `E2E_ZOOM_COOKIES_TXT_B64` in GitHub secrets for CI.
+
+CI also includes:
+
+- Static analysis: `ruff`
+- Dependency vulnerability scan: `pip-audit`
+- Secret scan: GitGuardian (`GITGUARDIAN_API_KEY` repository secret; scan is skipped with warning if not configured)
+
+### 5. Trigger a release
+
+Releases are triggered by pushing a git tag that starts with `v` (for example `v1.0.0`).
+
+```powershell
+git checkout main
+git pull origin main
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+If you need to move a mistaken tag:
+
+```powershell
+git tag -d v1.0.0
+git push origin :refs/tags/v1.0.0
+```
+
+# TODOS
+- explore TUI with Textual
+- add more cicd stuff
+  - [ ] dependabot
+  - [ ] codeql
+  - [ ] zizmor (github actions security checker)

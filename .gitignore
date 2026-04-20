@@ -17,6 +17,14 @@ cookies/
 Thumbs.db
 *.log
 
+# Local env config (keep template committed)
+.env
+.env.*
+!.env.example
+
 # Exe building
 dist/
 build/
+
+# Script because i dont want to have to do it again but also dont want to commit it
+scripts/zoom_passcode_flow_codegen.py

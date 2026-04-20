@@ -1,0 +1,293 @@
+name: Test and Build Artifacts
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  static_analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+  dependency_check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Dependency vulnerability scan
+        run: uv run pip-audit
+
+  gitguardian:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GG_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: GitGuardian secret scan
+        if: ${{ env.GG_API_KEY != '' }}
+        uses: GitGuardian/ggshield-action@v1
+        env:
+          GITGUARDIAN_API_KEY: ${{ env.GG_API_KEY }}
+          GITHUB_PUSH_BEFORE_SHA: ${{ github.event.before }}
+          GITHUB_PUSH_BASE_SHA: ${{ github.event.before }}
+          GITHUB_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+      - name: Skip notice (no API key configured)
+        if: ${{ env.GG_API_KEY == '' }}
+        run: echo "::warning::GitGuardian scan skipped because GITGUARDIAN_API_KEY is not configured."
+
+  test:
+    needs:
+      - static_analysis
+      - dependency_check
+      - gitguardian
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x64
+            runs_on: windows-latest
+          - target: macos-arm64
+            runs_on: macos-14
+          - target: macos-x64
+            runs_on: macos-13
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run tests
+        run: uv run pytest -m "not e2e" -q
+
+  e2e_release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      cookies_b64: ${{ steps.cookies_output.outputs.cookies_b64 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Install Playwright Chromium
+        run: uv run playwright install --with-deps chromium
+
+      - name: Refresh cookies from protected Zoom page
+        env:
+          E2E_ZOOM_PROTECTED_URL: ${{ secrets.E2E_ZOOM_PROTECTED_URL }}
+          E2E_ZOOM_PROTECTED_PASSCODE: ${{ secrets.E2E_ZOOM_PROTECTED_PASSCODE }}
+        run: |
+          if [ -z "${E2E_ZOOM_PROTECTED_URL}" ] || [ -z "${E2E_ZOOM_PROTECTED_PASSCODE}" ]; then
+            echo "::error::E2E_CONFIG_ISSUE: Missing E2E_ZOOM_PROTECTED_URL and/or E2E_ZOOM_PROTECTED_PASSCODE secrets"
+            exit 1
+          fi
+          uv run python scripts/refresh_zoom_cookies.py \
+            --url "${E2E_ZOOM_PROTECTED_URL}" \
+            --passcode "${E2E_ZOOM_PROTECTED_PASSCODE}" \
+            --output-file "cookies/refreshed_cookies.txt"
+
+      - name: Export cookies payload for e2e test job
+        id: cookies_output
+        shell: bash
+        run: |
+          if [ ! -f "cookies/refreshed_cookies.txt" ]; then
+            echo "::error::E2E_CONFIG_ISSUE: refreshed cookies file missing"
+            exit 1
+          fi
+          value="$(base64 -w 0 cookies/refreshed_cookies.txt)"
+          echo "cookies_b64=$value" >> "$GITHUB_OUTPUT"
+
+      - name: Run release e2e tests
+        env:
+          E2E_ZOOM_PUBLIC_URL: ${{ secrets.E2E_ZOOM_PUBLIC_URL }}
+          E2E_ZOOM_PROTECTED_URL: ${{ secrets.E2E_ZOOM_PROTECTED_URL }}
+          E2E_ZOOM_PROTECTED_PASSCODE: ${{ secrets.E2E_ZOOM_PROTECTED_PASSCODE }}
+          E2E_ZOOM_COOKIES_TXT_B64: ${{ steps.cookies_output.outputs.cookies_b64 }}
+        run: uv run pytest -m e2e -q --junitxml=e2e-results.xml
+
+      - name: Upload e2e report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results-${{ github.run_number }}
+          path: e2e-results.xml
+          if-no-files-found: ignore
+
+      - name: Flag likely recording/cookie data issue
+        if: failure()
+        shell: bash
+        run: |
+          if [ -f "e2e-results.xml" ] && grep -q "E2E_DATA_ISSUE" e2e-results.xml; then
+            echo "::warning::E2E failed with E2E_DATA_ISSUE. This likely indicates deleted/changed recording links or expired cookies, not necessarily a code regression."
+          fi
+
+  build:
+    needs:
+      - static_analysis
+      - dependency_check
+      - gitguardian
+      - test
+      - e2e_release
+    if: >
+      needs.static_analysis.result == 'success' &&
+      needs.dependency_check.result == 'success' &&
+      needs.gitguardian.result == 'success' &&
+      needs.test.result == 'success' &&
+      (needs.e2e_release.result == 'success' || needs.e2e_release.result == 'skipped')
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x64
+            runs_on: windows-latest
+            artifact_name: zoom-downloader-windows-x64
+            zip_name: zoom-downloader-windows-x64.zip
+          - target: macos-arm64
+            runs_on: macos-14
+            artifact_name: zoom-downloader-macos-arm64
+            zip_name: zoom-downloader-macos-arm64.zip
+          - target: macos-x64
+            runs_on: macos-13
+            artifact_name: zoom-downloader-macos-x64
+            zip_name: zoom-downloader-macos-x64.zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Build with PyInstaller spec
+        run: uv run pyinstaller --noconfirm --clean zoom-downloader.spec
+
+      - name: Package Windows release zip
+        if: matrix.target == 'windows-x64'
+        shell: pwsh
+        run: |
+          $pkg = "release_package"
+          Remove-Item -Recurse -Force $pkg -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $pkg | Out-Null
+          Copy-Item "dist/zoom-downloader.exe" "$pkg/zoom-downloader.exe"
+          Copy-Item "Run Zoom Downloader.bat" "$pkg/Run Zoom Downloader.bat"
+          Copy-Item "README.md" "$pkg/README.md"
+          Copy-Item "LICENSE" "$pkg/LICENSE"
+          Compress-Archive -Path "$pkg/*" -DestinationPath "${{ matrix.zip_name }}" -Force
+          $hash = (Get-FileHash "${{ matrix.zip_name }}" -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${{ matrix.zip_name }}" | Out-File -FilePath "${{ matrix.zip_name }}.sha256" -Encoding ascii -NoNewline
+
+      - name: Package macOS release zip
+        if: matrix.target == 'macos-arm64' || matrix.target == 'macos-x64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkg="release_package"
+          rm -rf "$pkg"
+          mkdir -p "$pkg"
+          cp dist/zoom-downloader "$pkg/zoom-downloader"
+          cp "Run Zoom Downloader.command" "$pkg/Run Zoom Downloader.command"
+          chmod +x "$pkg/zoom-downloader"
+          chmod +x "$pkg/Run Zoom Downloader.command"
+          cp README.md "$pkg/README.md"
+          cp LICENSE "$pkg/LICENSE"
+          (cd "$pkg" && zip -r "../${{ matrix.zip_name }}" .)
+          shasum -a 256 "${{ matrix.zip_name }}" > "${{ matrix.zip_name }}.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            ${{ matrix.zip_name }}
+            ${{ matrix.zip_name }}.sha256
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release_artifacts
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release_artifacts/**/*
