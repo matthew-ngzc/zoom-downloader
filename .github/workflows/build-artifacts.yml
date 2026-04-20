@@ -1,0 +1,130 @@
+name: Build Artifacts
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run tests
+        run: uv run pytest -q
+
+  build:
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Build with PyInstaller spec
+        run: uv run pyinstaller --noconfirm --clean zoom-downloader.spec
+
+      - name: Package Windows release zip
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $pkg = "release_package"
+          Remove-Item -Recurse -Force $pkg -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $pkg | Out-Null
+          Copy-Item "dist/zoom-downloader.exe" "$pkg/zoom-downloader.exe"
+          Copy-Item "Run Zoom Downloader.bat" "$pkg/Run Zoom Downloader.bat"
+          Copy-Item "README.md" "$pkg/README.md"
+          Copy-Item "LICENSE" "$pkg/LICENSE"
+          Compress-Archive -Path "$pkg/*" -DestinationPath "zoom-downloader-windows.zip" -Force
+
+      - name: Package macOS release zip
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkg="release_package"
+          rm -rf "$pkg"
+          mkdir -p "$pkg"
+          cp dist/zoom-downloader "$pkg/zoom-downloader"
+          cp "Run Zoom Downloader.command" "$pkg/Run Zoom Downloader.command"
+          chmod +x "$pkg/zoom-downloader"
+          chmod +x "$pkg/Run Zoom Downloader.command"
+          cp README.md "$pkg/README.md"
+          cp LICENSE "$pkg/LICENSE"
+          (cd "$pkg" && zip -r ../zoom-downloader-macos.zip .)
+
+      - name: Upload Windows artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zoom-downloader-windows
+          path: zoom-downloader-windows.zip
+          if-no-files-found: error
+
+      - name: Upload macOS artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zoom-downloader-macos
+          path: zoom-downloader-macos.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release_artifacts
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release_artifacts/**/*

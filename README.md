@@ -14,6 +14,23 @@ Passcode-only extraction is not reliable here; use [Cookies Setup](#cookies-setu
 - `uv` installed
 - Internet access (to reach Zoom recording URLs)
 
+## Windows Release Usage
+
+When using the packaged Windows release zip:
+
+- Extract the zip to a folder.
+- Run `Run Zoom Downloader.bat` to open the app in a maximized terminal window.
+- Running `zoom-downloader.exe` directly is still supported, but the launcher is the recommended entry point.
+
+## macOS Release Usage
+
+When using the packaged macOS release zip:
+
+- Extract the zip to a folder.
+- Run `Run Zoom Downloader.command`.
+- If macOS blocks it on first run, allow it in System Settings (Privacy & Security) and run again.
+- Running `zoom-downloader` directly is still supported, but the launcher is the recommended entry point.
+
 ## Running (uv setup)
 
 ### 1. Enter directory
@@ -72,10 +89,15 @@ uv run python zoom_recording_downloader.py
 ### 3. Build executable (PyInstaller + spec)
 
 ```powershell
-uv run pyinstaller zoom-downloader.spec
+uv run pyinstaller --noconfirm --clean zoom-downloader.spec
 ```
 
 Build output is generated in:
 
 - `dist/zoom-downloader.exe` (Windows)
 - `build/` (PyInstaller build artifacts)
+
+For release packaging, this repo's GitHub Actions workflow creates OS-specific zip bundles:
+
+- Windows zip includes `zoom-downloader.exe` + `Run Zoom Downloader.bat`.
+- macOS zip includes `zoom-downloader` + `Run Zoom Downloader.command`.

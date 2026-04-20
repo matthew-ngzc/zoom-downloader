@@ -7,7 +7,6 @@ import os
 import sys
 import time
 import ctypes
-import subprocess
 import traceback
 from pathlib import Path
 from typing import Any, cast
@@ -73,41 +72,6 @@ def configure_console_output() -> None:
             pass
     if not ANSI_ENABLED:
         ANSI_ENABLED = sys.stdout.isatty() or bool(os.getenv("FORCE_COLOR"))
-
-
-def maximize_console_window() -> None:
-    """Best-effort console maximize for Windows and macOS Terminal."""
-    if os.name == "nt":
-        try:
-            kernel32 = ctypes.windll.kernel32
-            user32 = ctypes.windll.user32
-            hwnd = kernel32.GetConsoleWindow()
-            if hwnd:
-                SW_MAXIMIZE = 3
-                user32.ShowWindow(hwnd, SW_MAXIMIZE)
-        except Exception:
-            pass
-        return
-
-    if sys.platform == "darwin":
-        # Works when launched in Apple Terminal. Other terminals may ignore this.
-        script = """
-        tell application "Terminal"
-            activate
-            if (count of windows) > 0 then
-                set zoomed of front window to true
-            end if
-        end tell
-        """
-        try:
-            subprocess.run(
-                ["osascript", "-e", script],
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        except Exception:
-            pass
 
 
 def supports_ansi() -> bool:
@@ -737,7 +701,7 @@ def collect_user_inputs() -> tuple[
     print(ui_default("Enter values when prompted. If a field is not applicable, just press Enter."))
     script_dir = Path(__file__).resolve().parent
     cookies_dir = script_dir / "cookies"
-    print(ui_default('Tip: type "back" to return to the previous field before download starts.'))
+    print(ui_default('Tip: at any text field, type "exit" to close the app, or "back" to return to the previous field.'))
 
     url: str | None = None
     output_dir_value: str | None = default_output_dir
@@ -833,8 +797,6 @@ def download_zoom_recording(
 
 def main() -> None:
     configure_console_output()
-    if getattr(sys, "frozen", False):
-        maximize_console_window()
     try:
         while True:
             print_zoom_downloader_header()
