@@ -1,4 +1,4 @@
-# Zoom Recorder Downloader
+# Zoom Recording Downloader
 
 This script downloads Zoom cloud recordings using `yt-dlp`.
 
@@ -37,46 +37,71 @@ There are 2 ways to run this app:
    - `zoom-downloader-macos-x64.zip` (Intel)
 
     ![Finding the correct file](images/files.png)
-3. Verify the SHA-256 Hash 
    
-   Each release also includes matching checksum files, download the one matching the `.zip` you downloaded earlier:
-   - `zoom-downloader-windows-x64.zip.sha256`
-   - `zoom-downloader-macos-arm64.zip.sha256`
-   - `zoom-downloader-macos-x64.zip.sha256`
+> [!CAUTION]
+> Downloading and running executables carries inherent security risks.
+> Only proceed if you explicitly trust the developer.
+>
+> You can **optionally verify the SHA-256 checksum** before running the binary. This does not affect its functionality.
+> This is **strongly recommended**.
+>
+> OR you can avoid running the prebuilt binary entirely and build it yourself from source:
+> [Run from Code](#2-run-from-code-clone)
 
-    Run the following commands in the terminal, at the directory that you downloaded the `.zip` and the `.sha256` files to. 
-    - Windows (PowerShell):
+
+3. (Optional, highly recommended) Verify the SHA-256 Hash
+     Each release also includes matching checksum files. Download the one matching the `.zip` file you downloaded:
+     - `zoom-downloader-windows-x64.zip.sha256`
+     - `zoom-downloader-macos-arm64.zip.sha256`
+     - `zoom-downloader-macos-x64.zip.sha256`
+     
+     Run the following command in a terminal from the directory containing both the `.zip` and `.sha256` files.
+   
+     Before running the command, open Terminal and change into the folder where both files were downloaded.
+     For most users, this is usually `Downloads`. If you downloaded the files somewhere else, replace `~/Downloads` with that folder path.
+     - Windows (PowerShell):
       ```powershell
+      cd $HOME\Downloads
       $expected = (Get-Content .\zoom-downloader-windows-x64.zip.sha256).Split(" ")[0].ToLower()
       $actual = (Get-FileHash .\zoom-downloader-windows-x64.zip -Algorithm SHA256).Hash.ToLower()
       $expected -eq $actual
       ```
-
-    - macOS:
+     
+     - macOS (Apple Silicon):
       ```bash
+      cd ~/Downloads
       shasum -a 256 -c zoom-downloader-macos-arm64.zip.sha256
       ```
+      
+     - macOS (Intel):
+      ```bash
+      cd ~/Downloads
+      shasum -a 256 -c zoom-downloader-macos-x64.zip.sha256
+      ```
+     
+     The check should report success (`True` on PowerShell, `OK` on macOS).
 
-    The check should report success (`True` on PowerShell, `OK` on macOS).
-
-    > [!CAUTION]
-    > Downloading and running executables carries inherent security risks. Only proceed if you explicitly trust the developer. Even then, always verify the file's hash before execution using the checksum mentioned earlier.
 4. Extract the zip.
-5. Run the launcher (future runs just need this step):
-   - Windows: `Run Zoom Downloader.bat`
-   - macOS: `Run Zoom Downloader.command`
+
+5. Open the extracted folder, then launch the app:
+   - **Windows:** double-click `Run Zoom Downloader.bat`
+   - **macOS:** double-click `Run Zoom Downloader.command`
+
+For future runs, you only need to repeat step 5.
   
 
-> **Security note**:
->- Release binaries are unsigned (macOS: not notarized, Windows: not code-signed), so first-run security warnings are expected.
->
-> **If blocked on macOS**:
->- Open **System Settings -> Privacy & Security**.
->- Under Security, allow the blocked app, then run `Run Zoom Downloader.command` again.
->
-> **If blocked on Windows**:
->- In SmartScreen, click **More info**.
->- Click **Run anyway**.
+> [!NOTE]
+> Release binaries are unsigned (macOS: not notarized, Windows: not code-signed), so first-run security warnings are expected.
+
+> [!NOTE]
+> **If blocked on macOS**
+> - Open **System Settings -> Privacy & Security**.
+> - Under Security, allow the blocked app, then run `Run Zoom Downloader.command` again.
+
+> [!NOTE]
+> **If blocked on Windows**
+> - In SmartScreen, click **More info**.
+> - Click **Run anyway**.
 
 ### 2. Run from Code (Clone)
 
